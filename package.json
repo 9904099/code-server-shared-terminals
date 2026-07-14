@@ -1,107 +1,67 @@
 {
   "name": "code-server-shared-terminals",
-  "displayName": "Code Server Shared Terminals",
-  "description": "在多个 code-server 浏览器窗口中发现并打开同一组持久终端任务。",
-  "version": "0.1.2",
-  "publisher": "aiwork",
+  "displayName": "code-server-shared-terminals",
+  "description": "Share persistent terminal tasks across multiple code-server browser windows using native terminal tabs.",
+  "version": "0.2.0",
+  "publisher": "9904099",
   "license": "MIT",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/9904099/code-server-shared-terminals.git"
   },
+  "homepage": "https://github.com/9904099/code-server-shared-terminals#readme",
+  "bugs": {
+    "url": "https://github.com/9904099/code-server-shared-terminals/issues"
+  },
   "engines": {
     "vscode": "^1.127.0"
   },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "onStartupFinished"
-  ],
+  "extensionKind": ["workspace"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "categories": ["Other"],
+  "keywords": ["code-server", "terminal", "tmux", "remote", "persistent", "shared-terminal"],
+  "galleryBanner": {
+    "color": "#111827",
+    "theme": "dark"
+  },
+  "activationEvents": ["onStartupFinished"],
   "main": "./dist/src/extension.js",
-  "files": [
-    "dist/src",
-    "README.md",
-    "LICENSE"
-  ],
+  "files": ["dist/src", "media/icon.png", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/*.test.js",
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build"
   },
   "contributes": {
     "commands": [
-      {
-        "command": "sharedTerminals.create",
-        "title": "共享终端: 新建任务",
-        "icon": "$(add)"
-      },
-      {
-        "command": "sharedTerminals.open",
-        "title": "共享终端: 打开任务"
-      },
-      {
-        "command": "sharedTerminals.rename",
-        "title": "共享终端: 重命名任务"
-      },
-      {
-        "command": "sharedTerminals.delete",
-        "title": "共享终端: 结束并删除任务",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "sharedTerminals.refresh",
-        "title": "共享终端: 刷新",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "sharedTerminals.openAll",
-        "title": "共享终端: 打开全部任务"
-      }
+      {"command": "sharedTerminals.create", "title": "共享终端: 新建任务", "icon": "$(add)"},
+      {"command": "sharedTerminals.open", "title": "共享终端: 打开任务"},
+      {"command": "sharedTerminals.rename", "title": "共享终端: 重命名任务"},
+      {"command": "sharedTerminals.delete", "title": "共享终端: 结束并删除任务", "icon": "$(trash)"},
+      {"command": "sharedTerminals.refresh", "title": "共享终端: 刷新", "icon": "$(refresh)"},
+      {"command": "sharedTerminals.openAll", "title": "共享终端: 打开全部任务"}
     ],
     "views": {
       "explorer": [
-        {
-          "id": "sharedTerminals.tasks",
-          "name": "共享终端任务",
-          "when": "workspaceFolderCount != 0"
-        }
+        {"id": "sharedTerminals.tasks", "name": "共享终端任务", "when": "workspaceFolderCount != 0"}
       ]
     },
     "menus": {
       "view/title": [
-        {
-          "command": "sharedTerminals.create",
-          "when": "view == sharedTerminals.tasks",
-          "group": "navigation@1"
-        },
-        {
-          "command": "sharedTerminals.refresh",
-          "when": "view == sharedTerminals.tasks",
-          "group": "navigation@2"
-        },
-        {
-          "command": "sharedTerminals.openAll",
-          "when": "view == sharedTerminals.tasks",
-          "group": "navigation@3"
-        }
+        {"command": "sharedTerminals.create", "when": "view == sharedTerminals.tasks", "group": "navigation@1"},
+        {"command": "sharedTerminals.refresh", "when": "view == sharedTerminals.tasks", "group": "navigation@2"},
+        {"command": "sharedTerminals.openAll", "when": "view == sharedTerminals.tasks", "group": "navigation@3"}
       ],
       "view/item/context": [
-        {
-          "command": "sharedTerminals.open",
-          "when": "view == sharedTerminals.tasks",
-          "group": "inline@1"
-        },
-        {
-          "command": "sharedTerminals.rename",
-          "when": "view == sharedTerminals.tasks",
-          "group": "navigation@1"
-        },
-        {
-          "command": "sharedTerminals.delete",
-          "when": "view == sharedTerminals.tasks",
-          "group": "navigation@2"
-        }
+        {"command": "sharedTerminals.open", "when": "view == sharedTerminals.tasks", "group": "inline@1"},
+        {"command": "sharedTerminals.rename", "when": "view == sharedTerminals.tasks", "group": "navigation@1"},
+        {"command": "sharedTerminals.delete", "when": "view == sharedTerminals.tasks", "group": "navigation@2"}
       ]
     },
     "configuration": {
@@ -110,17 +70,38 @@
         "sharedTerminals.autoOpen": {
           "type": "boolean",
           "default": true,
-          "description": "在当前浏览器工作台中自动打开服务器登记的共享终端任务。"
+          "description": "Automatically map registered server tasks to native terminal tabs in this browser window."
         },
         "sharedTerminals.registryPath": {
           "type": "string",
-          "default": "/home/coder/.local/share/code-server/shared-terminals/tasks.json",
-          "description": "服务器共享任务注册表路径。"
+          "default": "",
+          "description": "Shared task registry path. Empty uses the extension global storage directory."
         },
         "sharedTerminals.defaultCwd": {
           "type": "string",
-          "default": "/home/coder/aiwork",
-          "description": "新建共享终端任务的默认工作目录。"
+          "default": "",
+          "description": "Default working directory. Empty uses the first workspace folder, then the current user's home."
+        },
+        "sharedTerminals.tmuxPath": {
+          "type": "string",
+          "default": "tmux",
+          "description": "tmux executable name or absolute path."
+        },
+        "sharedTerminals.socketName": {
+          "type": "string",
+          "default": "code-server-shared-tasks",
+          "description": "Dedicated tmux socket name used for shared tasks."
+        },
+        "sharedTerminals.shellPath": {
+          "type": "string",
+          "default": "",
+          "description": "Shell used for new tasks. Empty uses SHELL, then /bin/sh."
+        },
+        "sharedTerminals.environment": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {"type": "string"},
+          "description": "Additional environment variables passed to new shared terminal tasks. Do not store secrets in workspace settings."
         }
       }
     }

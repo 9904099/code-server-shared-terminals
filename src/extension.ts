@@ -1,6 +1,9 @@
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname } from "node:path";
 import * as vscode from "vscode";
 
+import { applyRuntimeOverrides, RuntimeConfig, resolveExecutablePath, resolveRuntimeConfig } from "./runtime-config";
 import { SharedTask, SharedTaskStatus, TaskStore } from "./task-store";
 import { buildTerminalSpec, sharedTerminalPrefix } from "./terminal-spec";
 
@@ -45,6 +48,8 @@ class SharedTerminalController implements vscode.Disposable {
   constructor(
     private readonly store: TaskStore,
     private readonly provider: TaskTreeProvider,
+    private readonly runtime: RuntimeConfig,
+    private readonly defaultCwd: string,
   ) {
     this.disposables.push(vscode.window.onDidCloseTerminal((terminal) => {
       for (const [id, candidate] of this.terminals) {
@@ -70,10 +75,9 @@ class SharedTerminalController implements vscode.Disposable {
     if (!name) {
       return;
     }
-    const defaultCwd = vscode.workspace.getConfiguration("sharedTerminals").get<string>("defaultCwd", "/home/coder/aiwork");
     const cwd = await vscode.window.showInputBox({
       title: "共享终端工作目录",
-      value: defaultCwd,
+      value: this.defaultCwd,
       validateInput: (value) => value.startsWith("/") ? undefined : "请输入绝对路径",
     });
     if (!cwd) {
@@ -95,7 +99,7 @@ class SharedTerminalController implements vscode.Disposable {
       const expectedName = `${sharedTerminalPrefix}${task.name}`;
       terminal = vscode.window.terminals.find((candidate) => candidate.name === expectedName);
       if (!terminal) {
-        terminal = vscode.window.createTerminal(buildTerminalSpec(task));
+        terminal = vscode.window.createTerminal(buildTerminalSpec(task, this.runtime.tmuxPath, this.runtime.socketName));
       }
       this.terminals.set(task.id, terminal);
     }
@@ -159,12 +163,32 @@ function reportError(error: unknown): void {
   void vscode.window.showErrorMessage(`共享终端：${message}`);
 }
 
+function configuredValue(configuration: vscode.WorkspaceConfiguration, key: string): string | undefined {
+  const value = configuration.get<string>(key, "").trim();
+  return value || undefined;
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const configuration = vscode.workspace.getConfiguration("sharedTerminals");
-  const registryPath = configuration.get<string>("registryPath", "/home/coder/.local/share/code-server/shared-terminals/tasks.json");
-  const store = new TaskStore(registryPath);
+  const baseRuntime = resolveRuntimeConfig({
+    home: homedir(),
+    environment: process.env,
+    globalStoragePath: context.globalStorageUri.fsPath,
+  });
+  const runtime = applyRuntimeOverrides(baseRuntime, {
+    registryPath: configuredValue(configuration, "registryPath"),
+    tmuxPath: configuredValue(configuration, "tmuxPath"),
+    socketName: configuredValue(configuration, "socketName"),
+    shellPath: configuredValue(configuration, "shellPath"),
+    environment: configuration.get<Record<string, string>>("environment", {}),
+  });
+  runtime.tmuxPath = resolveExecutablePath(runtime.tmuxPath, runtime.environment.PATH, existsSync);
+  const defaultCwd = configuredValue(configuration, "defaultCwd")
+    || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    || homedir();
+  const store = new TaskStore(runtime.registryPath, undefined, runtime);
   const provider = new TaskTreeProvider(store);
-  const controller = new SharedTerminalController(store, provider);
+  const controller = new SharedTerminalController(store, provider, runtime, defaultCwd);
 
   context.subscriptions.push(
     controller,
@@ -177,7 +201,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("sharedTerminals.openAll", () => controller.openAll().catch(reportError)),
   );
 
-  const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(dirname(registryPath), basename(registryPath)));
+  const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(dirname(runtime.registryPath), basename(runtime.registryPath)));
   const synchronize = () => controller.synchronize().catch(reportError);
   const poller = setInterval(synchronize, 3000);
   context.subscriptions.push(
@@ -188,6 +212,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     { dispose: () => clearInterval(poller) },
   );
 
+  await store.verifyTmux().catch(reportError);
   await controller.synchronize();
 }
 

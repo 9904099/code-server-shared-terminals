@@ -1,38 +1,78 @@
-# 运行手册
+# Runbook
 
-## 构建验证
+## Build and verify
 
 ```bash
-npm install --include=dev
+npm ci
 npm test
+npm audit --omit=dev
 npm run package
+npx @vscode/vsce ls
+sha256sum code-server-shared-terminals-0.2.0.vsix
 ```
 
-## 安装验证
+## Install and validate
 
-1. 备份已安装的旧扩展目录和任务注册表。
-2. 使用 code-server CLI 安装 VSIX，不重启服务。
-3. 两个浏览器分别执行 `Developer: Reload Window`。
-4. 在浏览器 A 新建 `smoke-a`，确认浏览器 B 自动出现同名右侧标签。
-5. 在 A/B 新建不同任务，分别执行 `echo $PPID $$ $PWD`，确认不同任务 PID 不同、目录为 `/home/coder/aiwork`。
-6. 关闭 A 的标签，确认 B 中任务继续运行。
-7. 使用“结束并删除”清理 smoke 任务，确认两边标签退出且注册表删除记录。
+1. Confirm the target is Linux code-server and record its version, runtime user, HOME and workspace.
+2. Install tmux with the host package manager.
+3. Back up an existing extension directory and registry if upgrading.
+4. Install the VSIX without restarting code-server.
+5. Reload two browser windows.
+6. Create `smoke-a` in browser A and confirm browser B receives the same native terminal tab.
+7. Create a second task and verify the two tmux sessions have different PIDs.
+8. Close browser A's tab and verify browser B's task stays alive.
+9. Use **Terminate and Delete** and verify both clients exit and the registry entry disappears.
 
-## 只读排查
+## Read-only diagnostics
+
+Use the configured registry path and socket name:
 
 ```bash
-jq . /home/coder/.local/share/code-server/shared-terminals/tasks.json
+code-server --list-extensions --show-versions
+tmux -V
 tmux -L code-server-shared-tasks list-sessions
 tmux -L code-server-shared-tasks list-clients
-code-server --list-extensions --show-versions
 ```
 
-不要输出终端正文或凭据环境变量。
+The default registry resides under the extension's code-server global storage directory. Do not print terminal contents or secret-bearing environment variables.
 
-## 回滚
+## Docker compatibility smoke
 
-1. 在扩展面板确认并结束不再需要的共享任务；需要保留的任务先不要 kill。
-2. 卸载 `aiwork.code-server-shared-terminals` 或恢复备份扩展目录。
-3. 两边执行 `Developer: Reload Window`。
-4. 确认新建终端恢复为普通 Bash。
-5. 只有确认没有保留任务后，才删除任务注册表并执行 `tmux -L code-server-shared-tasks kill-server`。
+Build a clean image with tmux and start code-server on an unused local port:
+
+```bash
+docker build -f test/docker/Dockerfile -t shared-terminals-code-server:test .
+docker run --rm -d --name shared-terminals-code-server-test \
+  -p 127.0.0.1:18080:8080 \
+  -e PASSWORD=shared-terminal-smoke-only \
+  shared-terminals-code-server:test
+```
+
+Install the packaged VSIX and verify metadata:
+
+```bash
+docker cp code-server-shared-terminals-0.2.0.vsix \
+  shared-terminals-code-server-test:/tmp/extension.vsix
+docker exec shared-terminals-code-server-test \
+  code-server --install-extension /tmp/extension.vsix --force
+docker exec shared-terminals-code-server-test \
+  code-server --list-extensions --show-versions
+```
+
+Remove the test container when validation is complete:
+
+```bash
+docker rm -f shared-terminals-code-server-test
+```
+
+## Rollback
+
+1. Do not stop the dedicated tmux server while tasks must be preserved.
+2. Uninstall `9904099.code-server-shared-terminals` or reinstall the previous VSIX.
+3. Reload every browser window.
+4. Verify ordinary terminals remain functional.
+5. Only after confirming no task must be retained, remove the registry and run:
+
+```bash
+tmux -L code-server-shared-tasks kill-server
+```

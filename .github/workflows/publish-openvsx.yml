@@ -1,0 +1,36 @@
+name: Publish to Open VSX
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_namespace:
+        description: Create the 9904099 namespace on the first publication
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm audit --omit=dev
+      - run: npm run package
+      - name: Create Open VSX namespace
+        if: ${{ inputs.create_namespace }}
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx@1.0.2 create-namespace 9904099 -p "$OVSX_PAT"
+      - name: Publish extension
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx@1.0.2 publish code-server-shared-terminals-0.2.0.vsix -p "$OVSX_PAT"

@@ -1,4 +1,4 @@
-import { SharedTask, sharedTmuxSocket } from "./task-store";
+import { SharedTask } from "./task-store";
 
 export const sharedTerminalPrefix = "共享 · ";
 
@@ -9,11 +9,11 @@ export interface TerminalSpec {
   cwd: string;
 }
 
-export function buildTerminalSpec(task: SharedTask): TerminalSpec {
+export function buildTerminalSpec(task: SharedTask, tmuxPath = "tmux", socketName = "code-server-shared-tasks"): TerminalSpec {
   return {
     name: `${sharedTerminalPrefix}${task.name}`,
-    shellPath: "/usr/bin/tmux",
-    shellArgs: ["-L", sharedTmuxSocket, "attach-session", "-t", task.session],
+    shellPath: tmuxPath,
+    shellArgs: ["-L", socketName, "attach-session", "-t", task.session],
     cwd: task.cwd,
   };
 }

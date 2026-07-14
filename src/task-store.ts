@@ -1,12 +1,21 @@
 import { execFile } from "node:child_process";
-import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { isAbsolute, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 
+import { TaskRuntimeConfig } from "./runtime-config";
+
 const execFileAsync = promisify(execFile);
-const socketName = "code-server-shared-tasks";
-const terminalPath = "/home/coder/.local/bin:/home/coder/.local/node-v24.11.1-linux-x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+const defaultRuntime: TaskRuntimeConfig = {
+  tmuxPath: "tmux",
+  socketName: "code-server-shared-tasks",
+  shellPath: process.env.SHELL || "/bin/sh",
+  environment: Object.fromEntries(
+    ["HOME", "USER", "LOGNAME", "PATH", "SHELL", "CODEX_HOME"]
+      .flatMap((key) => process.env[key] ? [[key, process.env[key] as string]] : []),
+  ),
+};
 
 export interface SharedTask {
   id: string;
@@ -40,10 +49,22 @@ export class TaskStore {
   constructor(
     public readonly registryPath: string,
     private readonly runner: CommandRunner = new ProcessRunner(),
+    private readonly runtime: TaskRuntimeConfig = defaultRuntime,
   ) {}
 
   async list(): Promise<SharedTask[]> {
     return (await this.readRegistry()).tasks;
+  }
+
+  async verifyTmux(): Promise<string> {
+    try {
+      return (await this.runner.run(this.runtime.tmuxPath, ["-V"])).stdout.trim();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(`未找到 tmux（配置路径：${this.runtime.tmuxPath}），请先安装 tmux 或修改 sharedTerminals.tmuxPath`);
+      }
+      throw error;
+    }
   }
 
   async listWithStatus(): Promise<SharedTaskStatus[]> {
@@ -56,6 +77,7 @@ export class TaskStore {
     if (!isAbsolute(cwd)) {
       throw new Error("工作目录必须是绝对路径");
     }
+    await this.verifyTmux();
 
     return this.withLock(async () => {
       const registry = await this.readRegistry();
@@ -72,17 +94,17 @@ export class TaskStore {
         createdAt: new Date().toISOString(),
       };
 
-      await this.runner.run("tmux", [
-        "-L", socketName, "new-session", "-d", "-s", task.session, "-c", cwd,
-        "/usr/bin/env", "HOME=/home/coder", "USER=admin", "LOGNAME=admin",
-        "CODEX_HOME=/home/coder/.codex", `PATH=${terminalPath}`, "/bin/bash", "-l",
+      await this.runner.run(this.runtime.tmuxPath, [
+        "-L", this.runtime.socketName, "new-session", "-d", "-s", task.session, "-c", cwd,
+        "/usr/bin/env", ...Object.entries(this.runtime.environment).map(([key, value]) => `${key}=${value}`),
+        this.runtime.shellPath, "-l",
       ]);
       try {
-        await this.runner.run("tmux", ["-L", socketName, "set-option", "-t", task.session, "status", "off"]);
+        await this.runner.run(this.runtime.tmuxPath, ["-L", this.runtime.socketName, "set-option", "-t", task.session, "status", "off"]);
         registry.tasks.push(task);
         await this.writeRegistry(registry);
       } catch (error) {
-        await this.runner.run("tmux", ["-L", socketName, "kill-session", "-t", task.session]).catch(() => undefined);
+        await this.runner.run(this.runtime.tmuxPath, ["-L", this.runtime.socketName, "kill-session", "-t", task.session]).catch(() => undefined);
         throw error;
       }
       return task;
@@ -113,7 +135,7 @@ export class TaskStore {
       if (!task) {
         return;
       }
-      await this.runner.run("tmux", ["-L", socketName, "kill-session", "-t", task.session]).catch(() => undefined);
+      await this.runner.run(this.runtime.tmuxPath, ["-L", this.runtime.socketName, "kill-session", "-t", task.session]).catch(() => undefined);
       registry.tasks = registry.tasks.filter((candidate) => candidate.id !== id);
       await this.writeRegistry(registry);
     });
@@ -121,7 +143,7 @@ export class TaskStore {
 
   private async isAlive(task: SharedTask): Promise<boolean> {
     try {
-      await this.runner.run("tmux", ["-L", socketName, "has-session", "-t", task.session]);
+      await this.runner.run(this.runtime.tmuxPath, ["-L", this.runtime.socketName, "has-session", "-t", task.session]);
       return true;
     } catch {
       return false;
@@ -165,8 +187,16 @@ export class TaskStore {
         await mkdir(lockPath);
         break;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST" || attempt >= 50) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
           throw error;
+        }
+        const lockAge = Date.now() - (await stat(lockPath)).mtimeMs;
+        if (lockAge > 30_000) {
+          await rm(lockPath, { recursive: true, force: true });
+          continue;
+        }
+        if (attempt >= 50) {
+          throw new Error(`共享终端注册表锁等待超时：${lockPath}`);
         }
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
@@ -178,5 +208,3 @@ export class TaskStore {
     }
   }
 }
-
-export const sharedTmuxSocket = socketName;

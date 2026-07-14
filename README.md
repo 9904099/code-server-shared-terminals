@@ -1,61 +1,96 @@
 # Code Server Shared Terminals
 
-一个面向 Linux/code-server 的 VS Code 扩展：把服务器持久任务映射成原生终端标签，让多个浏览器窗口发现并连接同一组终端任务。
+[![CI](https://github.com/9904099/code-server-shared-terminals/actions/workflows/ci.yml/badge.svg)](https://github.com/9904099/code-server-shared-terminals/actions/workflows/ci.yml)
 
-## 功能
+A Linux/code-server extension that maps server-side persistent tasks to native terminal tabs. Multiple browser windows can discover and attach to the same task list without exposing tmux as the visible terminal UI.
 
-- 资源管理器提供“共享终端任务”视图。
-- 每个任务由隐藏状态栏的 tmux session 保持 PTY。
-- 每个浏览器通过原生 VS Code 终端标签连接同一任务。
-- 注册表变化通过文件监听和轮询同步到其他浏览器窗口。
-- 关闭单个标签只会 detach；“结束并删除”经确认后终止服务端任务。
-- 注册表只保存任务 ID、名称、工作目录、session 名和创建时间，不保存终端输出。
+## Features
 
-## 运行要求
+- A **Shared Terminal Tasks** view in Explorer.
+- One hidden tmux session per persistent task.
+- Native VS Code terminal tabs in every browser window.
+- File watching plus polling for cross-window synchronization.
+- Closing a tab only detaches that browser; **Terminate and Delete** stops the server task after confirmation.
+- The registry stores only task ID, name, working directory, session name and creation time—not terminal output.
+- Runtime paths, user, shell and environment are derived from the current code-server instance instead of `/home/coder`.
+- Stale registry locks are recovered automatically after 30 seconds.
 
-- Linux x86_64
-- code-server `4.127.0` / Code `1.127.0`，或兼容 VS Code API 的版本
-- Node.js 22（构建）
-- tmux 3.x
+## Requirements
 
-> 当前 `0.1.x` 版本是针对 `/home/coder` 运行布局构建的：默认工作区、注册表路径及任务启动环境均采用该布局。用于其他账号或目录前，请先调整扩展设置及 `src/task-store.ts` 中的启动环境。
+- Linux code-server compatible with VS Code API `^1.127.0`
+- `tmux` 3.x available on the code-server host
+- Node.js 22 for building from source
 
-## 构建
+Install tmux before using the extension:
 
 ```bash
-npm install --include=dev
+# Debian / Ubuntu
+sudo apt-get update && sudo apt-get install -y tmux
+
+# Fedora / RHEL
+sudo dnf install -y tmux
+
+# Alpine
+sudo apk add tmux
+```
+
+## Build and test
+
+```bash
+npm ci
 npm test
+npm audit --omit=dev
 npm run package
 ```
 
-产物：`code-server-shared-terminals-0.1.2.vsix`。
+Artifact: `code-server-shared-terminals-0.2.0.vsix`.
 
-## 安装
+## Install from VSIX
 
 ```bash
-code-server --install-extension code-server-shared-terminals-0.1.2.vsix --force
+code-server --install-extension code-server-shared-terminals-0.2.0.vsix --force
 ```
 
-安装后，在每个浏览器窗口执行 `Developer: Reload Window`。随后在资源管理器的“共享终端任务”视图中点击 `+` 新建任务。
+Reload each browser window with `Developer: Reload Window`, then use the **共享终端任务** view in Explorer.
 
-## 配置
+## Configuration
 
-| 设置 | 默认值 | 用途 |
+| Setting | Default | Purpose |
 | --- | --- | --- |
-| `sharedTerminals.autoOpen` | `true` | 自动把服务器任务映射到当前浏览器的终端列表 |
-| `sharedTerminals.registryPath` | `/home/coder/.local/share/code-server/shared-terminals/tasks.json` | 共享任务注册表 |
-| `sharedTerminals.defaultCwd` | `/home/coder/aiwork` | 新任务默认工作目录 |
+| `sharedTerminals.autoOpen` | `true` | Map registered tasks to native terminal tabs automatically |
+| `sharedTerminals.registryPath` | extension global storage | Shared task registry path |
+| `sharedTerminals.defaultCwd` | first workspace, then user HOME | Default task working directory |
+| `sharedTerminals.tmuxPath` | `tmux` | tmux executable name or absolute path |
+| `sharedTerminals.socketName` | `code-server-shared-tasks` | Dedicated tmux socket name |
+| `sharedTerminals.shellPath` | `$SHELL`, then `/bin/sh` | Shell for new tasks |
+| `sharedTerminals.environment` | `{}` | Extra environment variables for new tasks |
 
-## 使用边界
+Do not put passwords or tokens in workspace settings. Use a secure host-level environment or secret manager.
 
-- 两个浏览器连接同一个任务时，会看到并操作同一 PTY；不要同时向同一个交互式任务输入。
-- 两边需要独立工作时，应创建两个不同任务。
-- 目前仅支持 Linux/code-server。
+## Semantics and limits
 
-## 架构与运维
+- Two browsers attached to the same task operate the same PTY. Do not type into the same interactive task concurrently.
+- Create separate tasks when users need independent work.
+- This extension currently supports Linux/code-server only.
+- The task registry is shared by extension hosts that use the same registry path and operating-system user.
 
-- [架构说明](docs/architecture.md)
-- [运行手册](docs/runbook.md)
+## Open VSX publishing
+
+code-server uses [Open VSX](https://open-vsx.org/) rather than Microsoft's marketplace. Publishing requires an Eclipse account, the Open VSX Publisher Agreement, a `9904099` namespace and an Open VSX access token:
+
+```bash
+npx ovsx create-namespace 9904099 -p "$OVSX_PAT"
+npx ovsx publish code-server-shared-terminals-0.2.0.vsix -p "$OVSX_PAT"
+```
+
+Never commit `OVSX_PAT`. See the [Open VSX publishing guide](https://github.com/eclipse-openvsx/openvsx/wiki/Publishing-Extensions).
+
+The repository also includes a manual **Publish to Open VSX** GitHub Actions workflow. Add the token as the repository secret `OVSX_PAT`; select `create_namespace=true` only for the first publication. Later versions publish with the same workflow and `create_namespace=false`.
+
+## Architecture and operations
+
+- [Architecture](docs/architecture.md)
+- [Runbook](docs/runbook.md)
 
 ## License
 
