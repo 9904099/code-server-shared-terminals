@@ -34,6 +34,16 @@ sudo dnf install -y tmux
 sudo apk add tmux
 ```
 
+## Install
+
+Install directly from Open VSX in code-server by searching for `code-server-shared-terminals`, or download the VSIX from [GitHub Releases](https://github.com/9904099/code-server-shared-terminals/releases/latest):
+
+```bash
+code-server --install-extension code-server-shared-terminals-0.2.0.vsix --force
+```
+
+Reload each browser window with `Developer: Reload Window`, then use the **共享终端任务** view in Explorer.
+
 ## Build and test
 
 ```bash
@@ -44,14 +54,6 @@ npm run package
 ```
 
 Artifact: `code-server-shared-terminals-0.2.0.vsix`.
-
-## Install from VSIX
-
-```bash
-code-server --install-extension code-server-shared-terminals-0.2.0.vsix --force
-```
-
-Reload each browser window with `Developer: Reload Window`, then use the **共享终端任务** view in Explorer.
 
 ## Configuration
 
@@ -73,19 +75,6 @@ Do not put passwords or tokens in workspace settings. Use a secure host-level en
 - Create separate tasks when users need independent work.
 - This extension currently supports Linux/code-server only.
 - The task registry is shared by extension hosts that use the same registry path and operating-system user.
-
-## Open VSX publishing
-
-code-server uses [Open VSX](https://open-vsx.org/) rather than Microsoft's marketplace. Publishing requires an Eclipse account, the Open VSX Publisher Agreement, a `9904099` namespace and an Open VSX access token:
-
-```bash
-npx ovsx create-namespace 9904099 -p "$OVSX_PAT"
-npx ovsx publish code-server-shared-terminals-0.2.0.vsix -p "$OVSX_PAT"
-```
-
-Never commit `OVSX_PAT`. See the [Open VSX publishing guide](https://github.com/eclipse-openvsx/openvsx/wiki/Publishing-Extensions).
-
-The repository also includes a manual **Publish to Open VSX** GitHub Actions workflow. Add the token as the repository secret `OVSX_PAT`; select `create_namespace=true` only for the first publication. Later versions publish with the same workflow and `create_namespace=false`.
 
 ## Architecture and operations
 
