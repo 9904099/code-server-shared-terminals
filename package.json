@@ -2,7 +2,7 @@
   "name": "code-server-shared-terminals",
   "displayName": "code-server-shared-terminals",
   "description": "Share persistent terminal tasks across multiple code-server browser windows using native terminal tabs.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "9904099",
   "license": "MIT",
   "icon": "media/icon.png",

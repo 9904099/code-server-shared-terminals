@@ -8,7 +8,7 @@ npm test
 npm audit --omit=dev
 npm run package
 npx @vscode/vsce ls
-sha256sum code-server-shared-terminals-0.2.1.vsix
+sha256sum code-server-shared-terminals-0.2.2.vsix
 ```
 
 ## Install and validate
@@ -51,7 +51,7 @@ docker run --rm -d --name shared-terminals-code-server-test \
 Install the packaged VSIX and verify metadata:
 
 ```bash
-docker cp code-server-shared-terminals-0.2.1.vsix \
+docker cp code-server-shared-terminals-0.2.2.vsix \
   shared-terminals-code-server-test:/tmp/extension.vsix
 docker exec shared-terminals-code-server-test \
   code-server --install-extension /tmp/extension.vsix --force

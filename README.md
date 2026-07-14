@@ -39,10 +39,15 @@ sudo apk add tmux
 Install directly from Open VSX in code-server by searching for `code-server-shared-terminals`, or download the VSIX from [GitHub Releases](https://github.com/9904099/code-server-shared-terminals/releases/latest):
 
 ```bash
-code-server --install-extension code-server-shared-terminals-0.2.1.vsix --force
+code-server --install-extension code-server-shared-terminals-0.2.2.vsix --force
 ```
 
-Reload each browser window with `Developer: Reload Window`, then use the **共享终端任务** view in Explorer.
+After the first installation **and after every extension update**, activate the installed version in every code-server browser window that was already open:
+
+1. Run `Developer: Reload Window` from the Command Palette in each open window; or
+2. Refresh the complete browser page.
+
+Newly opened browser windows already use the current extension version and do not need an additional reload. After activation, use the **共享终端任务** view in Explorer.
 
 ## Build and test
 
@@ -53,7 +58,7 @@ npm audit --omit=dev
 npm run package
 ```
 
-Artifact: `code-server-shared-terminals-0.2.1.vsix`.
+Artifact: `code-server-shared-terminals-0.2.2.vsix`.
 
 ## Configuration
 
