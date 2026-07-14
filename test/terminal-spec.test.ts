@@ -10,6 +10,7 @@ const task: SharedTask = {
   cwd: "/home/coder/workspace",
   session: "shared-abc",
   createdAt: "2026-07-14T00:00:00.000Z",
+  open: true,
 };
 
 test("terminal spec opens the persistent server task as a native VS Code tab", () => {

@@ -10,7 +10,7 @@ A Linux/code-server extension that maps server-side persistent tasks to native t
 - One hidden tmux session per persistent task.
 - Native VS Code terminal tabs in every browser window.
 - File watching plus polling for cross-window synchronization.
-- Closing a tab only detaches that browser; **Terminate and Delete** stops the server task after confirmation.
+- Closing a shared terminal tab in any browser closes it in every connected browser; the tmux task stays available for reopening. **Terminate and Delete** stops the server task after confirmation.
 - The registry stores only task ID, name, working directory, session name and creation time—not terminal output.
 - Runtime paths, user, shell and environment are derived from the current code-server instance instead of `/home/coder`.
 - Stale registry locks are recovered automatically after 30 seconds.
@@ -39,7 +39,7 @@ sudo apk add tmux
 Install directly from Open VSX in code-server by searching for `code-server-shared-terminals`, or download the VSIX from [GitHub Releases](https://github.com/9904099/code-server-shared-terminals/releases/latest):
 
 ```bash
-code-server --install-extension code-server-shared-terminals-0.2.0.vsix --force
+code-server --install-extension code-server-shared-terminals-0.2.1.vsix --force
 ```
 
 Reload each browser window with `Developer: Reload Window`, then use the **共享终端任务** view in Explorer.
@@ -53,7 +53,7 @@ npm audit --omit=dev
 npm run package
 ```
 
-Artifact: `code-server-shared-terminals-0.2.0.vsix`.
+Artifact: `code-server-shared-terminals-0.2.1.vsix`.
 
 ## Configuration
 

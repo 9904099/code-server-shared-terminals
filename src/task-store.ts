@@ -23,6 +23,7 @@ export interface SharedTask {
   cwd: string;
   session: string;
   createdAt: string;
+  open: boolean;
 }
 
 export interface SharedTaskStatus extends SharedTask {
@@ -92,6 +93,7 @@ export class TaskStore {
         cwd,
         session: `shared-${id}`,
         createdAt: new Date().toISOString(),
+        open: true,
       };
 
       await this.runner.run(this.runtime.tmuxPath, [
@@ -123,6 +125,19 @@ export class TaskStore {
         throw new Error(`共享终端任务“${cleanName}”已存在`);
       }
       task.name = cleanName;
+      await this.writeRegistry(registry);
+      return task;
+    });
+  }
+
+  async setOpen(id: string, open: boolean): Promise<SharedTask> {
+    return this.withLock(async () => {
+      const registry = await this.readRegistry();
+      const task = registry.tasks.find((candidate) => candidate.id === id);
+      if (!task) {
+        throw new Error("共享终端任务不存在");
+      }
+      task.open = open;
       await this.writeRegistry(registry);
       return task;
     });
@@ -161,7 +176,10 @@ export class TaskStore {
   private async readRegistry(): Promise<Registry> {
     try {
       const data = JSON.parse(await readFile(this.registryPath, "utf8")) as Registry;
-      return { version: 1, tasks: Array.isArray(data.tasks) ? data.tasks : [] };
+      const tasks = Array.isArray(data.tasks)
+        ? data.tasks.map((task) => ({ ...task, open: task.open !== false }))
+        : [];
+      return { version: 1, tasks };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return { version: 1, tasks: [] };

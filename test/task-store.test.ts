@@ -102,6 +102,16 @@ test("rename changes the shared label without replacing the session", async () =
   assert.equal(renamed.session, task.session);
 });
 
+test("closing and reopening a task updates the shared visibility state", async () => {
+  const { store } = await fixture();
+  const task = await store.create("同步关闭", "/home/coder/workspace");
+
+  assert.equal(task.open, true);
+  assert.equal((await store.setOpen(task.id, false)).open, false);
+  assert.equal((await store.list())[0].open, false);
+  assert.equal((await store.setOpen(task.id, true)).open, true);
+});
+
 test("delete kills the server session and removes the registry entry", async () => {
   const { runner, store } = await fixture();
   const task = await store.create("临时任务", "/home/coder/workspace");

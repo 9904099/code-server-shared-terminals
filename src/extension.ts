@@ -43,6 +43,7 @@ class TaskTreeProvider implements vscode.TreeDataProvider<TaskItem> {
 
 class SharedTerminalController implements vscode.Disposable {
   private readonly terminals = new Map<string, vscode.Terminal>();
+  private readonly suppressedCloseEvents = new Set<vscode.Terminal>();
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -52,9 +53,13 @@ class SharedTerminalController implements vscode.Disposable {
     private readonly defaultCwd: string,
   ) {
     this.disposables.push(vscode.window.onDidCloseTerminal((terminal) => {
+      if (this.suppressedCloseEvents.delete(terminal)) {
+        return;
+      }
       for (const [id, candidate] of this.terminals) {
         if (candidate === terminal) {
           this.terminals.delete(id);
+          void this.store.setOpen(id, false).then(() => this.provider.refresh()).catch(reportError);
         }
       }
     }));
@@ -89,7 +94,10 @@ class SharedTerminalController implements vscode.Disposable {
     await this.open(task, true);
   }
 
-  async open(task: SharedTask, show = true): Promise<void> {
+  async open(task: SharedTask, show = true, publish = true): Promise<void> {
+    if (publish) {
+      task = await this.store.setOpen(task.id, true);
+    }
     const status = (await this.store.listWithStatus()).find((candidate) => candidate.id === task.id);
     if (!status?.alive) {
       throw new Error(`共享终端任务“${task.name}”未运行`);
@@ -125,8 +133,7 @@ class SharedTerminalController implements vscode.Disposable {
       return;
     }
     const renamed = await this.store.rename(task.id, name);
-    this.terminals.get(task.id)?.dispose();
-    this.terminals.delete(task.id);
+    this.disposeLocal(task.id);
     this.provider.refresh();
     await this.open(renamed, true);
   }
@@ -140,16 +147,30 @@ class SharedTerminalController implements vscode.Disposable {
     if (answer !== "结束并删除") {
       return;
     }
-    this.terminals.get(task.id)?.dispose();
-    this.terminals.delete(task.id);
+    this.disposeLocal(task.id);
     await this.store.delete(task.id);
     this.provider.refresh();
   }
 
+  private disposeLocal(id: string): void {
+    const terminal = this.terminals.get(id);
+    if (terminal) {
+      this.suppressedCloseEvents.add(terminal);
+      terminal.dispose();
+      this.terminals.delete(id);
+    }
+  }
+
   async synchronize(): Promise<void> {
     this.provider.refresh();
+    const tasks = await this.store.listWithStatus();
+    for (const task of tasks.filter((candidate) => !candidate.open)) {
+      this.disposeLocal(task.id);
+    }
     if (vscode.workspace.getConfiguration("sharedTerminals").get<boolean>("autoOpen", true)) {
-      await this.openAll();
+      for (const task of tasks.filter((candidate) => candidate.alive && candidate.open)) {
+        await this.open(task, false, false);
+      }
     }
   }
 }

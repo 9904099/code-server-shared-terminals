@@ -23,7 +23,8 @@ browser B extension host ─┘                         ├─ task A PTY
 
 - The task registry is the shared server fact.
 - Terminal tabs are browser-local objects reconstructed from that fact.
-- Closing a tab detaches one browser.
+- Closing a shared tab writes `open: false`; every browser disposes its matching local tab while the tmux session remains alive.
+- Reopening a task writes `open: true`; every browser with automatic mapping enabled reattaches.
 - Deleting a task terminates its tmux session and makes other attached tabs exit.
 - Multiple clients may attach to one task, but simultaneous interactive input requires human coordination.
 

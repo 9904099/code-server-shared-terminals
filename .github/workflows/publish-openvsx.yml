@@ -33,4 +33,4 @@ jobs:
       - name: Publish extension
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npx --yes ovsx@1.0.2 publish code-server-shared-terminals-0.2.0.vsix -p "$OVSX_PAT"
+        run: npx --yes ovsx@1.0.2 publish code-server-shared-terminals-*.vsix -p "$OVSX_PAT"
