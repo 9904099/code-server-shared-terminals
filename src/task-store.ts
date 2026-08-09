@@ -1024,7 +1024,7 @@ export class TaskStore {
     ) {
       throw new Error("快速共享终端停止确认身份不匹配，已保留任务登记");
     }
-    for (let attempt = 0; attempt < 250; attempt += 1) {
+    for (let attempt = 0; attempt < 500; attempt += 1) {
       if (await this.lookupProcessStartTicks(task.brokerPid) !== task.brokerStartTicks) {
         const remainingControlSocket = await this.lookupSocketIdentity(task.brokerControlPath);
         const remainingDataSocket = await this.lookupSocketIdentity(task.brokerDataPath);

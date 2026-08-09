@@ -968,12 +968,13 @@ class Broker:
         else:
             self.cleanup_ok = self._terminate_owned_processes()
         self.selector.close()
-        try:
-            with self._socket_namespace_locks((self.socket_path, self.control_socket_path)):
-                self._unlink_owned_socket_locked(self.socket_path)
-                self._unlink_owned_socket_locked(self.control_socket_path)
-        except (OSError, RuntimeError):
-            self.cleanup_ok = False
+        if self.cleanup_ok:
+            try:
+                with self._socket_namespace_locks((self.socket_path, self.control_socket_path)):
+                    self._unlink_owned_socket_locked(self.socket_path)
+                    self._unlink_owned_socket_locked(self.control_socket_path)
+            except (OSError, RuntimeError):
+                self.cleanup_ok = False
 
     def _unlink_owned_socket(self, path: str) -> None:
         try:
@@ -1036,7 +1037,7 @@ class Broker:
         for signum, timeout in (
             (signal.SIGHUP, 0.5),
             (signal.SIGTERM, 0.5),
-            (signal.SIGKILL, 1.0),
+            (signal.SIGKILL, 5.0),
         ):
             if not self._owned_processes():
                 self._reap_children()

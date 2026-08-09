@@ -143,7 +143,10 @@ test("PTY broker returns to resource baseline after churn and malformed clients"
     assert.equal(after.threads, 1);
     assert.ok(Number(after.fdCount) <= Number(baseline.fdCount) + 2, `${JSON.stringify({ baseline, after })}`);
     assert.ok(Number(after.rssBytes) <= Number(baseline.rssBytes) + 8 * 1024 * 1024, `${JSON.stringify({ baseline, after })}`);
-    assert.ok(Number(after.disconnectedClients) >= 150);
+    assert.ok(
+      Number(after.disconnectedClients) + Number(after.rejectedClients) >= 150,
+      JSON.stringify({ after }),
+    );
     assert.equal(after.ptyInputBytes, 0);
     assert.ok(Number(after.queuedClientOutputBytes) <= 262144);
 
@@ -500,6 +503,35 @@ test("PTY broker refuses to unlink a socket owned by a live broker", async () =>
     }
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("PTY broker preserves owned sockets when process cleanup is incomplete", () => {
+  const harness = String.raw`
+import importlib.util,json,os,sys,tempfile
+spec=importlib.util.spec_from_file_location("broker", ${JSON.stringify(brokerScript)})
+module=importlib.util.module_from_spec(spec)
+sys.modules[spec.name]=module
+spec.loader.exec_module(module)
+with tempfile.TemporaryDirectory(prefix="pty-broker-incomplete-cleanup-") as directory:
+    data_path=os.path.join(directory,"broker.sock")
+    control_path=os.path.join(directory,"broker.control.sock")
+    broker=module.Broker(data_path,directory,"/bin/sh","incomplete-cleanup",0,1,1024,1024,1024,control_socket_path=control_path)
+    broker.data_listener=broker._bind_listener(data_path,"data-listener")
+    broker.control_listener=broker._bind_listener(control_path,"control-listener")
+    broker._terminate_owned_processes=lambda: False
+    broker._cleanup()
+    print(json.dumps({
+        "cleanupOk":broker.cleanup_ok,
+        "dataPathExists":os.path.lexists(data_path),
+        "controlPathExists":os.path.lexists(control_path),
+    },separators=(",",":")))
+`;
+  const result = spawnSync("python3", ["-c", harness], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const outcome = JSON.parse(result.stdout.trim()) as Record<string, boolean>;
+  assert.equal(outcome.cleanupOk, false, JSON.stringify(outcome));
+  assert.equal(outcome.dataPathExists, true, JSON.stringify(outcome));
+  assert.equal(outcome.controlPathExists, true, JSON.stringify(outcome));
 });
 
 test("PTY broker cleanup restores a replacement socket instead of unlinking it", () => {

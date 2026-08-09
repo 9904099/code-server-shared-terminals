@@ -192,6 +192,8 @@ test("registry publication failure uses authenticated broker stop and leaves no 
   let started: StartedProcess | undefined;
   let shellPid = 0;
   let descendantPid = 0;
+  let shellStartTicks: number | undefined;
+  let descendantStartTicks: number | undefined;
   let registryWrites = 0;
 
   class RecordingRunner extends ProcessRunner {
@@ -251,6 +253,12 @@ test("registry publication failure uses authenticated broker stop and leaves no 
             () => existsSync(shellPidFile) && existsSync(descendantPidFile),
             "cleanup test shell and descendant PID files",
           );
+          shellPid = Number(await readFile(shellPidFile, "utf8"));
+          descendantPid = Number(await readFile(descendantPidFile, "utf8"));
+          shellStartTicks = await processStartTicks(shellPid);
+          descendantStartTicks = await processStartTicks(descendantPid);
+          assert.ok(shellStartTicks !== undefined, "cleanup test shell identity disappeared before rollback");
+          assert.ok(descendantStartTicks !== undefined, "cleanup test descendant identity disappeared before rollback");
           throw new Error("injected registry publication failure");
         }
         await writeFileAtomically(path, content);
@@ -270,8 +278,12 @@ test("registry publication failure uses authenticated broker stop and leaves no 
     shellPid = Number(await readFile(shellPidFile, "utf8"));
     descendantPid = Number(await readFile(descendantPidFile, "utf8"));
     assert.equal(await processStartTicks(started!.pid), undefined, "broker survived registry rollback");
-    assert.equal(await processStartTicks(shellPid), undefined, "shell survived registry rollback");
-    assert.equal(await processStartTicks(descendantPid), undefined, "independent session descendant survived registry rollback");
+    assert.notEqual(await processStartTicks(shellPid), shellStartTicks, "shell survived registry rollback");
+    assert.notEqual(
+      await processStartTicks(descendantPid),
+      descendantStartTicks,
+      "independent session descendant survived registry rollback",
+    );
     const socketArtifacts = (await readdir(socketDirectory)).filter(
       (name) => name.endsWith(".sock") || name.endsWith(".ctl") || name.includes(".remove-"),
     );
