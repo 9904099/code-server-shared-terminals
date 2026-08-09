@@ -24,7 +24,19 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm audit --omit=dev
-      - run: npm run package
+      - name: Download the exact GitHub Release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          base_url="https://github.com/9904099/code-server-shared-terminals/releases/download/v${version}"
+          curl --fail --location --silent --show-error \
+            --output "code-server-shared-terminals-${version}.vsix" \
+            "${base_url}/code-server-shared-terminals-${version}.vsix"
+          curl --fail --location --silent --show-error \
+            --output SHA256SUMS \
+            "${base_url}/SHA256SUMS"
+          sha256sum --check SHA256SUMS
       - name: Create Open VSX namespace
         if: ${{ inputs.create_namespace }}
         env:

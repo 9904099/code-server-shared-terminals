@@ -2,7 +2,7 @@
   "name": "code-server-shared-terminals",
   "displayName": "code-server-shared-terminals",
   "description": "Share persistent terminal tasks across multiple code-server browser windows using native terminal tabs.",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "publisher": "9904099",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -20,7 +20,24 @@
   "extensionKind": ["workspace"],
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": true
+      "supported": "limited",
+      "description": "Host executable, environment, registry, socket and working-directory overrides are disabled until the workspace is trusted.",
+      "restrictedConfigurations": [
+        "sharedTerminals.registryPath",
+        "sharedTerminals.defaultCwd",
+        "sharedTerminals.tmuxPath",
+        "sharedTerminals.socketName",
+        "sharedTerminals.pythonPath",
+        "sharedTerminals.socketDirectory",
+        "sharedTerminals.shellPath",
+        "sharedTerminals.environment",
+        "sharedTerminals.maxTasks",
+        "sharedTerminals.maxClientsPerTask",
+        "sharedTerminals.replayBytes",
+        "sharedTerminals.maxClientInputBytes",
+        "sharedTerminals.maxClientOutputBytes",
+        "sharedTerminals.maxPtyInputBytes"
+      ]
     }
   },
   "categories": ["Other"],
@@ -29,16 +46,24 @@
     "color": "#111827",
     "theme": "dark"
   },
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": ["onStartupFinished", "onTerminalProfile:sharedTerminals.fast"],
   "main": "./dist/src/extension.js",
-  "files": ["dist/src", "media/icon.png", "README.md", "LICENSE"],
+  "files": ["dist/src", "scripts/pty_broker.py", "media/icon.png", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/*.test.js",
+    "test:resource": "npm run build && node --test dist/test/pty-broker-resource.test.js",
+    "bench:broker": "python3 scripts/benchmark_pty_broker.py",
+    "soak:broker": "python3 scripts/soak_pty_broker.py",
     "package": "vsce package --no-dependencies",
     "vscode:prepublish": "npm run build"
   },
   "contributes": {
+    "terminal": {
+      "profiles": [
+        {"id": "sharedTerminals.fast", "title": "共享终端（快速）", "icon": "terminal"}
+      ]
+    },
     "commands": [
       {"command": "sharedTerminals.create", "title": "共享终端: 新建任务", "icon": "$(add)"},
       {"command": "sharedTerminals.open", "title": "共享终端: 打开任务"},
@@ -62,6 +87,11 @@
         {"command": "sharedTerminals.open", "when": "view == sharedTerminals.tasks", "group": "inline@1"},
         {"command": "sharedTerminals.rename", "when": "view == sharedTerminals.tasks", "group": "navigation@1"},
         {"command": "sharedTerminals.delete", "when": "view == sharedTerminals.tasks", "group": "navigation@2"}
+      ],
+      "commandPalette": [
+        {"command": "sharedTerminals.open", "when": "false"},
+        {"command": "sharedTerminals.rename", "when": "false"},
+        {"command": "sharedTerminals.delete", "when": "false"}
       ]
     },
     "configuration": {
@@ -74,34 +104,100 @@
         },
         "sharedTerminals.registryPath": {
           "type": "string",
+          "scope": "machine",
           "default": "",
           "description": "Shared task registry path. Empty uses the extension global storage directory."
         },
         "sharedTerminals.defaultCwd": {
           "type": "string",
+          "scope": "machine",
           "default": "",
           "description": "Default working directory. Empty uses the first workspace folder, then the current user's home."
         },
         "sharedTerminals.tmuxPath": {
           "type": "string",
+          "scope": "machine",
           "default": "tmux",
           "description": "tmux executable name or absolute path."
         },
         "sharedTerminals.socketName": {
           "type": "string",
+          "scope": "machine",
           "default": "code-server-shared-tasks",
-          "description": "Dedicated tmux socket name used for shared tasks."
+          "description": "Dedicated tmux socket name used by legacy shared tasks."
+        },
+        "sharedTerminals.pythonPath": {
+          "type": "string",
+          "scope": "machine",
+          "default": "python3",
+          "description": "Python 3 executable used by the lightweight PTY broker."
+        },
+        "sharedTerminals.socketDirectory": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "Unix socket directory for the lightweight PTY broker. Empty uses a private per-user directory under the system temporary directory."
         },
         "sharedTerminals.shellPath": {
           "type": "string",
+          "scope": "machine",
           "default": "",
           "description": "Shell used for new tasks. Empty uses SHELL, then /bin/sh."
         },
         "sharedTerminals.environment": {
           "type": "object",
+          "scope": "machine",
           "default": {},
           "additionalProperties": {"type": "string"},
           "description": "Additional environment variables passed to new shared terminal tasks. Do not store secrets in workspace settings."
+        },
+        "sharedTerminals.maxTasks": {
+          "type": "integer",
+          "scope": "machine",
+          "default": 12,
+          "minimum": 1,
+          "maximum": 16,
+          "description": "Maximum registered shared terminal tasks for this code-server user."
+        },
+        "sharedTerminals.maxClientsPerTask": {
+          "type": "integer",
+          "scope": "machine",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 8,
+          "description": "Maximum simultaneous browser clients attached to one shared terminal."
+        },
+        "sharedTerminals.replayBytes": {
+          "type": "integer",
+          "scope": "machine",
+          "default": 524288,
+          "minimum": 0,
+          "maximum": 1048576,
+          "description": "Bounded in-memory output replay retained per terminal."
+        },
+        "sharedTerminals.maxClientInputBytes": {
+          "type": "integer",
+          "scope": "machine",
+          "default": 262144,
+          "minimum": 5,
+          "maximum": 1048581,
+          "description": "Maximum buffered protocol input per client before that client is disconnected."
+        },
+        "sharedTerminals.maxClientOutputBytes": {
+          "type": "integer",
+          "scope": "machine",
+          "default": 2097152,
+          "minimum": 5,
+          "maximum": 8388608,
+          "description": "Maximum queued output per client before a slow client is disconnected."
+        },
+        "sharedTerminals.maxPtyInputBytes": {
+          "type": "integer",
+          "scope": "machine",
+          "default": 262144,
+          "minimum": 1,
+          "maximum": 1048576,
+          "description": "Maximum aggregate PTY input queue per terminal before the producing client is disconnected."
         }
       }
     }

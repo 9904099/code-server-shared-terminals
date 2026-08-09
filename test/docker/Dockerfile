@@ -2,7 +2,7 @@ FROM codercom/code-server:4.127.0
 
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tmux \
+    && apt-get install -y --no-install-recommends python3 tmux \
     && rm -rf /var/lib/apt/lists/*
 USER coder
 
