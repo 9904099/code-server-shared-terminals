@@ -8,10 +8,10 @@ import test from "node:test";
 
 import { processStartTicks, ProcessRunner, StartedProcess, TaskStore, writeFileAtomically } from "../src/task-store";
 
-async function waitFor(check: () => boolean, label: string, timeoutMs = 5_000): Promise<void> {
+async function waitFor(check: () => boolean | Promise<boolean>, label: string, timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (check()) {
+    if (await check()) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -133,6 +133,17 @@ test("broker startup gate does not release a shell before PID identity is durabl
   const shellMarker = join(dir, "shell-started");
   const socketDirectory = join(dir, "sockets");
   let writes = 0;
+  let started: StartedProcess | undefined;
+  class RecordingRunner extends ProcessRunner {
+    override async start(
+      command: string,
+      args: string[],
+      options: { cwd: string; env: NodeJS.ProcessEnv },
+    ): Promise<StartedProcess> {
+      started = await super.start(command, args, options);
+      return started;
+    }
+  }
   await writeFile(shellScript, [
     "#!/bin/sh",
     `printf started > ${JSON.stringify(shellMarker)}`,
@@ -140,7 +151,7 @@ test("broker startup gate does not release a shell before PID identity is durabl
     "",
   ].join("\n"));
   await chmod(shellScript, 0o700);
-  const store = new TaskStore(join(dir, "tasks.json"), new ProcessRunner(), {
+  const store = new TaskStore(join(dir, "tasks.json"), new RecordingRunner(), {
     tmuxPath: "tmux",
     socketName: "legacy-test",
     pythonPath: "/usr/bin/python3",
@@ -166,8 +177,15 @@ test("broker startup gate does not release a shell before PID identity is durabl
   });
 
   try {
-    await assert.rejects(() => store.create("启动门", dir), /PID publication failure/);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await assert.rejects(
+      () => store.create("启动门", dir),
+      (error) => /PID publication failure/.test(describeError(error)),
+    );
+    assert.ok(started !== undefined, "broker process was not started");
+    await waitFor(
+      async () => await processStartTicks(started!.pid) !== started!.startTicks,
+      "startup-gated broker exit",
+    );
     assert.equal(existsSync(shellMarker), false, "shell started before PID identity became durable");
     const artifacts = existsSync(socketDirectory) ? await readdir(socketDirectory) : [];
     assert.deepEqual(
