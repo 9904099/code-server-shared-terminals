@@ -874,7 +874,11 @@ class Broker:
     def _signal_owned_processes(self, signum: int) -> None:
         for identity in self._owned_processes().values():
             current = self._read_process_identity(identity.pid)
-            if current != identity:
+            if (
+                current is None
+                or current.pid != identity.pid
+                or current.start_ticks != identity.start_ticks
+            ):
                 continue
             try:
                 os.kill(identity.pid, signum)
