@@ -120,6 +120,11 @@ export interface StartedProcess {
   cancelStartup?: () => void;
 }
 
+export function isMissingProcessError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "ENOENT" || code === "ESRCH";
+}
+
 export async function processStartTicks(pid: number): Promise<number | undefined> {
   try {
     const statLine = await readFile(`/proc/${pid}/stat`, "utf8");
@@ -134,7 +139,7 @@ export async function processStartTicks(pid: number): Promise<number | undefined
     const value = Number(fieldsAfterCommand[19]);
     return Number.isInteger(value) && value > 0 ? value : undefined;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    if (isMissingProcessError(error)) {
       return undefined;
     }
     throw error;

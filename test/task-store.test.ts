@@ -8,6 +8,7 @@ import test from "node:test";
 import {
   CommandRunner,
   InProcessRegistryLock,
+  isMissingProcessError,
   PythonRegistryLock,
   readFileHandleLimited,
   TaskStore,
@@ -16,6 +17,12 @@ import {
 } from "../src/task-store";
 
 const brokerScript = join(process.cwd(), "scripts", "pty_broker.py");
+
+test("missing process errors include both ENOENT and ESRCH", () => {
+  assert.equal(isMissingProcessError(Object.assign(new Error("missing"), { code: "ENOENT" })), true);
+  assert.equal(isMissingProcessError(Object.assign(new Error("vanished"), { code: "ESRCH" })), true);
+  assert.equal(isMissingProcessError(Object.assign(new Error("denied"), { code: "EACCES" })), false);
+});
 
 class FakeRunner implements CommandRunner {
   readonly calls: Array<{ command: string; args: string[] }> = [];
