@@ -15,6 +15,7 @@ A Linux/code-server extension that maps server-side persistent tasks to native t
 - File watching plus polling for cross-window synchronization.
 - Closing a shared terminal tab in any browser closes it in every connected browser; the server-side task stays available for reopening. Closing or reloading the whole browser window only detaches that client and does not publish a shared close. **Terminate and Delete** stops the server task after confirmation.
 - Slow clients have independent bounded output queues; one browser cannot block the broker for every other browser.
+- Each native attach process drains Broker output through a non-blocking bounded queue while its browser renderer is paused. This prevents a hidden/background browser from blocking the attach process and losing its native terminal tab; if the attach queue itself reaches its configured limit, older pending display history is discarded with a visible warning while the latest output and server-side Shell remain available.
 - A bounded 512 KiB replay buffer restores recent output when another browser attaches. Replay is memory-only and never written to the registry.
 - The active input client controls PTY size, preventing two differently sized browsers from continuously fighting over rows and columns.
 - The registry stores only task metadata plus Broker PID/start-time, socket dev/inode and task-cgroup path/dev/inode needed for fail-closed cleanup—not terminal output or environment values.
@@ -31,7 +32,7 @@ A Linux/code-server extension that maps server-side persistent tasks to native t
 
 - Linux code-server compatible with VS Code API `^1.127.0`
 - Python 3 available on the code-server host
-- Unified cgroup v2 and a code-server systemd service configured with `Delegate=yes`; without delegation, creation of a new `0.3.0` broker task is rejected before the shell starts
+- Unified cgroup v2 and a code-server systemd service configured with `Delegate=yes`; without delegation, creation of a new `0.3.x` broker task is rejected before the shell starts
 - Container deployments need an init/reaper (for example Docker `--init`) so a Broker orphaned by an Extension Host restart is reaped after it exits
 - `tmux` 3.x is needed only while opening legacy tasks created by version `0.2.x`
 - Node.js 22 for building from source
@@ -54,7 +55,7 @@ sudo apk add python3
 Install directly from Open VSX in code-server by searching for `code-server-shared-terminals`, or download the VSIX from [GitHub Releases](https://github.com/9904099/code-server-shared-terminals/releases/latest):
 
 ```bash
-code-server --install-extension code-server-shared-terminals-0.3.0.vsix --force
+code-server --install-extension code-server-shared-terminals-0.3.1.vsix --force
 ```
 
 After the first installation **and after every extension update**, activate the installed version in every code-server browser window that was already open:
@@ -76,7 +77,7 @@ npm audit --omit=dev
 npm run package
 ```
 
-Artifact: `code-server-shared-terminals-0.3.0.vsix`.
+Artifact: `code-server-shared-terminals-0.3.1.vsix`.
 
 The ordinary local test commands use the subreaper fallback so they can run in unprivileged CI. Release-candidate soak/benchmark evidence must add `--require-cgroup` and run inside the delegated target service or an isolated privileged cgroup-v2 container; the JSON must report `observedProcessBoundary: "cgroup-v2"`.
 
@@ -98,6 +99,7 @@ The ordinary local test commands use the subreaper fallback so they can run in u
 | `sharedTerminals.replayBytes` | `524288` | Memory-only replay bytes retained per terminal |
 | `sharedTerminals.maxClientInputBytes` | `262144` | Maximum buffered protocol input per client |
 | `sharedTerminals.maxClientOutputBytes` | `2097152` | Maximum queued output per client before slow-client disconnect |
+| `sharedTerminals.maxAttachOutputBytes` | `8388608` | Maximum paused browser output retained by each native attach process; configurable up to `104857600` (100 MiB) |
 | `sharedTerminals.maxPtyInputBytes` | `262144` | Maximum aggregate PTY input queue per terminal |
 
 Do not put passwords or tokens in workspace settings. Use a secure host-level environment or secret manager.
@@ -107,7 +109,7 @@ Do not put passwords or tokens in workspace settings. Use a secure host-level en
 - Two browsers attached to the same task operate the same PTY. Do not type into the same interactive task concurrently.
 - Create separate tasks when users need independent work.
 - Broker tasks survive browser and Extension Host disconnects, but not a host reboot or a code-server service stop that kills its whole control group. Registry rows remain visible as stopped; recreating a shell cannot restore commands that were running before process loss.
-- `0.3.0` does not silently fall back to process-tree scanning for extension-created tasks. If cgroup delegation is missing or stale, task creation fails before publishing a socket or starting the login shell.
+- `0.3.x` does not silently fall back to process-tree scanning for extension-created tasks. If cgroup delegation is missing or stale, task creation fails before publishing a socket or starting the login shell.
 - Existing ordinary terminals and legacy tmux tasks are not silently migrated. Explicitly created shared terminals use the fast broker; legacy tasks continue through tmux until explicitly deleted.
 - This extension currently supports Linux/code-server only.
 - The task registry is shared by extension hosts that use the same registry path and operating-system user.

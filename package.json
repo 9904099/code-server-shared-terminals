@@ -2,7 +2,7 @@
   "name": "code-server-shared-terminals",
   "displayName": "code-server-shared-terminals",
   "description": "Share persistent terminal tasks across multiple code-server browser windows using native terminal tabs.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "9904099",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -36,6 +36,7 @@
         "sharedTerminals.replayBytes",
         "sharedTerminals.maxClientInputBytes",
         "sharedTerminals.maxClientOutputBytes",
+        "sharedTerminals.maxAttachOutputBytes",
         "sharedTerminals.maxPtyInputBytes"
       ]
     }
@@ -190,6 +191,14 @@
           "minimum": 5,
           "maximum": 8388608,
           "description": "Maximum queued output per client before a slow client is disconnected."
+        },
+        "sharedTerminals.maxAttachOutputBytes": {
+          "type": "integer",
+          "scope": "machine",
+          "default": 8388608,
+          "minimum": 1048832,
+          "maximum": 104857600,
+          "description": "Maximum output retained by each native terminal attach process while its browser renderer is paused. Old buffered output is discarded with a visible warning after this bounded limit."
         },
         "sharedTerminals.maxPtyInputBytes": {
           "type": "integer",

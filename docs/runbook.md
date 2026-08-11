@@ -11,14 +11,14 @@ npm run soak:broker -- --duration 600
 npm audit --omit=dev
 npm run package
 npx @vscode/vsce ls
-sha256sum code-server-shared-terminals-0.3.0.vsix
+sha256sum code-server-shared-terminals-0.3.1.vsix
 ```
 
 ## Install and validate
 
 1. Confirm the target is Linux code-server and record its version, runtime user, HOME and workspace.
 2. Confirm Python 3, unified cgroup v2 and filesystem `flock` support are available. Broker socket paths are random and never reused; a pre-existing path blocks startup instead of being moved or deleted. Keep tmux only if legacy `0.2.x` tasks must remain attachable.
-3. Confirm the code-server systemd unit reports `Delegate=yes`. If it does not, prepare a reviewed drop-in containing `[Service]` and `Delegate=yes`; applying it requires `daemon-reload` plus a code-server restart and therefore is a separately approved production change. Do not install `0.3.0` first and hope it falls back: new task creation deliberately fails closed without delegation.
+3. Confirm the code-server systemd unit reports `Delegate=yes`. If it does not, prepare a reviewed drop-in containing `[Service]` and `Delegate=yes`; applying it requires `daemon-reload` plus a code-server restart and therefore is a separately approved production change. Do not install `0.3.x` first and hope it falls back: new task creation deliberately fails closed without delegation.
 4. Back up an existing extension directory and registry if upgrading.
 5. Install the VSIX without restarting code-server.
 6. Reload two browser windows.
@@ -54,6 +54,8 @@ The JSON contains process identity, `processBoundary`, task cgroup path, client/
 ## Resource release gates
 
 - `npm run test:resource` must return clients/FDs/threads to baseline after attach/detach and malformed-client churn.
+- `test/attach-backpressure.test.ts` must prove that an attach process keeps draining at least 32 MiB from the Broker while its native PTY stdout is paused, then flushes in order when the renderer resumes. Its overflow case must retain the latest marker, emit the visible truncation warning and stay within the configured/RSS bound.
+- `sharedTerminals.maxAttachOutputBytes=104857600` allows 100 MiB per native attach without preallocation. With the default `12` tasks and `4` clients, the enforced theoretical attach-buffer ceiling is 4.8 GiB; increasing task/client ceilings with the same buffer is rejected once the 5 GiB per-user aggregate gate would be exceeded.
 - `npm run bench:broker` records direct broker P50/P95/P99 key-to-output latency and bulk throughput. It is a local component measurement, not a substitute for the two-browser user-visible path.
 - Run the 10-minute soak for every candidate with `--require-cgroup`; it must exercise hot PTY input/output, a non-reading slow consumer, connection churn, idle recovery, control-plane latency and event-loop lag. Bind 24-hour and 72-hour cgroup-mode soak evidence to the exact candidate SHA before public release or production installation.
 - RSS slope uses actual monotonic sample timestamps and is enforced only after at least 60 seconds of second-half evidence; shorter smoke runs still enforce absolute RSS, FD/thread, queue, slow-consumer, latency and cleanup gates but must not extrapolate a few seconds of allocator noise to bytes/hour.
@@ -81,7 +83,7 @@ docker run --rm -d --name shared-terminals-code-server-test \
 Install the packaged VSIX and verify metadata:
 
 ```bash
-docker cp code-server-shared-terminals-0.3.0.vsix \
+docker cp code-server-shared-terminals-0.3.1.vsix \
   shared-terminals-code-server-test:/tmp/extension.vsix
 docker exec shared-terminals-code-server-test \
   code-server --install-extension /tmp/extension.vsix --force

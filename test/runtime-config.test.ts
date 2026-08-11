@@ -35,6 +35,7 @@ test("runtime configuration follows the current code-server user and shell", () 
   assert.equal(config.replayBytes, 512 * 1024);
   assert.equal(config.maxClientInputBytes, 256 * 1024);
   assert.equal(config.maxClientOutputBytes, 2 * 1024 * 1024);
+  assert.equal(config.maxAttachOutputBytes, 8 * 1024 * 1024);
   assert.equal(config.maxPtyInputBytes, 256 * 1024);
   assert.equal(config.requireCgroup, true);
   assert.deepEqual(config.environment, {
@@ -85,6 +86,7 @@ test("runtime settings override paths and merge additional environment variables
     replayBytes: 131072,
     maxClientInputBytes: 32768,
     maxClientOutputBytes: 524288,
+    maxAttachOutputBytes: 100 * 1024 * 1024,
     maxPtyInputBytes: 65536,
     requireCgroup: false,
   });
@@ -103,6 +105,7 @@ test("runtime settings override paths and merge additional environment variables
   assert.equal(config.replayBytes, 131072);
   assert.equal(config.maxClientInputBytes, 32768);
   assert.equal(config.maxClientOutputBytes, 524288);
+  assert.equal(config.maxAttachOutputBytes, 100 * 1024 * 1024);
   assert.equal(config.maxPtyInputBytes, 65536);
   assert.equal(config.requireCgroup, false);
 });
@@ -142,5 +145,18 @@ test("runtime resource validation rejects replay and aggregate memory combinatio
     ...base,
     maxTasks: 64,
   }), /全部终端聚合缓冲预算/);
+  assert.doesNotThrow(() => validateRuntimeResourceBudget({
+    ...base,
+    maxAttachOutputBytes: 100 * 1024 * 1024,
+  }));
+  assert.throws(() => validateRuntimeResourceBudget({
+    ...base,
+    maxAttachOutputBytes: 100 * 1024 * 1024 + 1,
+  }), /单客户端 attach 输出缓冲/);
+  assert.throws(() => validateRuntimeResourceBudget({
+    ...base,
+    maxTasks: 16,
+    maxAttachOutputBytes: 100 * 1024 * 1024,
+  }), /全部 attach 输出缓冲预算/);
   assert.doesNotThrow(() => validateRuntimeResourceBudget(base));
 });

@@ -6,6 +6,9 @@ const pendingDataClients = 2;
 const controlBufferBytes = 8 * 64 * 1024;
 const maxBrokerBufferBytes = 64 * 1024 * 1024;
 const maxUserBufferBytes = 256 * 1024 * 1024;
+const defaultAttachOutputBytes = 8 * 1024 * 1024;
+const maxAttachOutputBytes = 100 * 1024 * 1024;
+const maxUserAttachOutputBytes = 5 * 1024 * 1024 * 1024;
 
 export interface RuntimeConfigInput {
   home: string;
@@ -28,6 +31,7 @@ export interface TaskRuntimeConfig {
   replayBytes?: number;
   maxClientInputBytes?: number;
   maxClientOutputBytes?: number;
+  maxAttachOutputBytes?: number;
   maxPtyInputBytes?: number;
   requireCgroup?: boolean;
 }
@@ -49,6 +53,7 @@ export interface RuntimeOverrides {
   replayBytes?: number;
   maxClientInputBytes?: number;
   maxClientOutputBytes?: number;
+  maxAttachOutputBytes?: number;
   maxPtyInputBytes?: number;
   requireCgroup?: boolean;
 }
@@ -59,6 +64,7 @@ export function validateRuntimeResourceBudget(runtime: TaskRuntimeConfig): void 
   const replayBytes = runtime.replayBytes ?? 512 * 1024;
   const clientInputBytes = runtime.maxClientInputBytes ?? 256 * 1024;
   const clientOutputBytes = runtime.maxClientOutputBytes ?? 2 * 1024 * 1024;
+  const attachOutputBytes = runtime.maxAttachOutputBytes ?? defaultAttachOutputBytes;
   const ptyInputBytes = runtime.maxPtyInputBytes ?? 256 * 1024;
   if (replayBytes + protocolHeaderBytes > clientOutputBytes) {
     throw new Error("回放缓冲必须小于客户端输出队列，并为协议头保留空间");
@@ -76,6 +82,13 @@ export function validateRuntimeResourceBudget(runtime: TaskRuntimeConfig): void 
   const perUser = perBroker * maxTasks;
   if (perUser > maxUserBufferBytes) {
     throw new Error(`全部终端聚合缓冲预算 ${perUser} 超过 ${maxUserBufferBytes} 字节`);
+  }
+  if (attachOutputBytes > maxAttachOutputBytes) {
+    throw new Error(`单客户端 attach 输出缓冲 ${attachOutputBytes} 超过 ${maxAttachOutputBytes} 字节`);
+  }
+  const perUserAttach = maxTasks * maxClients * attachOutputBytes;
+  if (perUserAttach > maxUserAttachOutputBytes) {
+    throw new Error(`全部 attach 输出缓冲预算 ${perUserAttach} 超过 ${maxUserAttachOutputBytes} 字节`);
   }
 }
 
@@ -107,6 +120,7 @@ export function resolveRuntimeConfig(input: RuntimeConfigInput): RuntimeConfig {
     replayBytes: 512 * 1024,
     maxClientInputBytes: 256 * 1024,
     maxClientOutputBytes: 2 * 1024 * 1024,
+    maxAttachOutputBytes: defaultAttachOutputBytes,
     maxPtyInputBytes: 256 * 1024,
     requireCgroup: true,
   };
@@ -127,6 +141,7 @@ export function applyRuntimeOverrides(base: RuntimeConfig, overrides: RuntimeOve
     replayBytes: overrides.replayBytes ?? base.replayBytes,
     maxClientInputBytes: overrides.maxClientInputBytes ?? base.maxClientInputBytes,
     maxClientOutputBytes: overrides.maxClientOutputBytes ?? base.maxClientOutputBytes,
+    maxAttachOutputBytes: overrides.maxAttachOutputBytes ?? base.maxAttachOutputBytes,
     maxPtyInputBytes: overrides.maxPtyInputBytes ?? base.maxPtyInputBytes,
     requireCgroup: overrides.requireCgroup ?? base.requireCgroup,
     environment: {

@@ -386,6 +386,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     replayBytes: configuredInteger(configuration, "replayBytes", 0, 1024 * 1024),
     maxClientInputBytes: configuredInteger(configuration, "maxClientInputBytes", 5, 1024 * 1024 + 5),
     maxClientOutputBytes: configuredInteger(configuration, "maxClientOutputBytes", 5, 8 * 1024 * 1024),
+    maxAttachOutputBytes: configuredInteger(
+      configuration,
+      "maxAttachOutputBytes",
+      1024 * 1024 + 256,
+      100 * 1024 * 1024,
+    ),
     maxPtyInputBytes: configuredInteger(configuration, "maxPtyInputBytes", 1, 1024 * 1024),
   });
   runtime.pythonPath = resolveExecutablePath(runtime.pythonPath, runtime.environment.PATH, existsSync, "Python 3");

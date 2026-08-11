@@ -9,7 +9,7 @@ test("extension manifest limits host execution settings in untrusted workspaces"
   assert.equal(manifest.name, "code-server-shared-terminals");
   assert.equal(manifest.displayName, "code-server-shared-terminals");
   assert.equal(manifest.publisher, "9904099");
-  assert.equal(manifest.version, "0.3.0");
+  assert.equal(manifest.version, "0.3.1");
   assert.deepEqual(manifest.extensionKind, ["workspace"]);
   assert.equal(manifest.capabilities.untrustedWorkspaces.supported, "limited");
   assert.deepEqual(
@@ -28,6 +28,7 @@ test("extension manifest limits host execution settings in untrusted workspaces"
       "sharedTerminals.replayBytes",
       "sharedTerminals.maxClientInputBytes",
       "sharedTerminals.maxClientOutputBytes",
+      "sharedTerminals.maxAttachOutputBytes",
       "sharedTerminals.maxPtyInputBytes",
     ]),
   );
@@ -38,6 +39,14 @@ test("extension manifest limits host execution settings in untrusted workspaces"
   assert.equal(manifest.contributes.configuration.properties["sharedTerminals.defaultCwd"].default, "");
   assert.equal(manifest.contributes.configuration.properties["sharedTerminals.pythonPath"].default, "python3");
   assert.equal(manifest.contributes.configuration.properties["sharedTerminals.socketDirectory"].default, "");
+  assert.equal(
+    manifest.contributes.configuration.properties["sharedTerminals.maxAttachOutputBytes"].default,
+    8 * 1024 * 1024,
+  );
+  assert.equal(
+    manifest.contributes.configuration.properties["sharedTerminals.maxAttachOutputBytes"].maximum,
+    100 * 1024 * 1024,
+  );
   assert.deepEqual(manifest.contributes.terminal.profiles, [
     { id: "sharedTerminals.fast", title: "共享终端（快速）", icon: "terminal" },
   ]);

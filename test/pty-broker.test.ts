@@ -292,7 +292,7 @@ test("PTY broker exposes bounded non-sensitive status and rejects oversized PTY 
     await waitFor(() => statusClient.hasFrame("S"), "status response");
     const status = JSON.parse(statusClient.framesWithPayload("S")[0].toString("utf8")) as Record<string, unknown>;
     assert.equal(status.taskId, "status-test");
-    assert.equal(status.version, "0.3.0");
+    assert.equal(status.version, "0.3.1");
     assert.equal(status.threads, 1);
     assert.equal(status.processBoundary, "subreaper");
     assert.equal(typeof status.rssBytes, "number");

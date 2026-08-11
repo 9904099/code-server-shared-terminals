@@ -31,6 +31,8 @@ export function buildTerminalSpec(task: SharedTask, runtime: TaskRuntimeConfig):
         "attach",
         "--socket",
         task.brokerDataPath ?? join(runtime.socketDirectory, `${task.session}.sock`),
+        "--max-output-bytes",
+        String(runtime.maxAttachOutputBytes ?? 8 * 1024 * 1024),
       ],
       cwd: task.cwd,
       env: { [sharedTerminalTaskIdEnvironmentKey]: task.id },

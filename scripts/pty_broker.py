@@ -26,12 +26,14 @@ from dataclasses import dataclass, field
 from contextlib import contextmanager
 from pathlib import Path
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 HEADER = struct.Struct("!cI")
 SIZE = struct.Struct("!HH")
 MAX_FRAME_BYTES = 1024 * 1024
 DEFAULT_MAX_CLIENT_INPUT_BYTES = 256 * 1024
 DEFAULT_MAX_CLIENT_OUTPUT_BYTES = 2 * 1024 * 1024
+DEFAULT_MAX_ATTACH_OUTPUT_BYTES = 8 * 1024 * 1024
+MAX_ATTACH_OUTPUT_BYTES = 100 * 1024 * 1024
 DEFAULT_MAX_PTY_INPUT_BYTES = 256 * 1024
 MAX_EVENT_BATCH = 128
 MAX_FRAMES_PER_READ = 32
@@ -41,6 +43,10 @@ MAX_CONTROL_OUTPUT_BYTES = 64 * 1024
 MAX_ACCEPT_BATCH = 64
 MAX_BROKER_BUFFER_BYTES = 64 * 1024 * 1024
 LOOP_IDLE_TIMEOUT_SECONDS = 0.05
+ATTACH_OUTPUT_TRUNCATED = (
+    "\r\n\x1b[33m[共享终端：浏览器暂停消费输出，缓冲达到上限；已丢弃较早历史并恢复最新输出]"
+    "\x1b[0m\r\n"
+).encode("utf-8")
 PR_SET_CHILD_SUBREAPER = 36
 AT_FDCWD = -100
 RENAME_NOREPLACE = 1
@@ -1109,7 +1115,7 @@ def terminal_size() -> tuple[int, int]:
         return 24, 80
 
 
-def run_attach(socket_path: str) -> int:
+def run_attach(socket_path: str, max_output_bytes: int) -> int:
     connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     connection.connect(socket_path)
     connection.sendall(encode_frame(b"A"))
@@ -1129,26 +1135,70 @@ def run_attach(socket_path: str) -> int:
     selector = selectors.DefaultSelector()
     selector.register(connection, selectors.EVENT_READ, "socket")
     selector.register(sys.stdin.fileno(), selectors.EVENT_READ, "stdin")
+    stdout_fd = sys.stdout.fileno()
+    stdout_was_blocking = os.get_blocking(stdout_fd)
+    os.set_blocking(stdout_fd, False)
+    output = ChunkQueue(max_output_bytes)
+    stdout_registered = False
+    socket_open = True
     incoming = bytearray()
+
+    def update_stdout_events() -> None:
+        nonlocal stdout_registered
+        if output.size and not stdout_registered:
+            selector.register(stdout_fd, selectors.EVENT_WRITE, "stdout")
+            stdout_registered = True
+        elif not output.size and stdout_registered:
+            selector.unregister(stdout_fd)
+            stdout_registered = False
+
+    def queue_output(payload: bytes) -> None:
+        if output.append(payload):
+            update_stdout_events()
+            return
+        output.clear()
+        output.append(ATTACH_OUTPUT_TRUNCATED)
+        available = max_output_bytes - output.size
+        output.append(payload[-available:])
+        update_stdout_events()
+
     try:
         while True:
+            if not socket_open and output.size == 0:
+                return 0
             if resized:
                 resized = False
                 rows, columns = terminal_size()
-                connection.sendall(encode_frame(b"R", SIZE.pack(rows, columns)))
+                if socket_open:
+                    connection.sendall(encode_frame(b"R", SIZE.pack(rows, columns)))
             for key, _events in selector.select(timeout=0.25):
                 if key.data == "stdin":
-                    data = os.read(sys.stdin.fileno(), 65536)
+                    try:
+                        data = os.read(sys.stdin.fileno(), 65536)
+                    except BlockingIOError:
+                        continue
                     if not data:
                         return 0
-                    connection.sendall(encode_frame(b"I", data))
+                    if socket_open:
+                        connection.sendall(encode_frame(b"I", data))
+                elif key.data == "stdout":
+                    try:
+                        written = os.write(stdout_fd, output.peek())
+                    except BlockingIOError:
+                        continue
+                    except OSError as error:
+                        if error.errno in (errno.EIO, errno.EPIPE):
+                            return 0
+                        raise
+                    output.consume(written)
+                    update_stdout_events()
                 else:
                     data = connection.recv(65536)
                     if not data:
-                        return 0
+                        selector.unregister(connection)
+                        socket_open = False
+                        continue
                     incoming.extend(data)
-                    if len(incoming) > MAX_FRAME_BYTES + HEADER.size:
-                        return 1
                     while len(incoming) >= HEADER.size:
                         kind, length = HEADER.unpack(incoming[: HEADER.size])
                         if length > MAX_FRAME_BYTES:
@@ -1158,13 +1208,14 @@ def run_attach(socket_path: str) -> int:
                         payload = bytes(incoming[HEADER.size:HEADER.size + length])
                         del incoming[: HEADER.size + length]
                         if kind == b"O":
-                            view = memoryview(payload)
-                            while view:
-                                written = os.write(sys.stdout.fileno(), view)
-                                view = view[written:]
+                            queue_output(payload)
     finally:
         selector.close()
         connection.close()
+        try:
+            os.set_blocking(stdout_fd, stdout_was_blocking)
+        except OSError:
+            pass
         signal.signal(signal.SIGWINCH, previous_winch)
         if saved_attributes is not None:
             termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, saved_attributes)
@@ -1410,6 +1461,7 @@ def parse_args() -> argparse.Namespace:
 
     attach = commands.add_parser("attach")
     attach.add_argument("--socket", required=True)
+    attach.add_argument("--max-output-bytes", type=int, default=DEFAULT_MAX_ATTACH_OUTPUT_BYTES)
 
     probe = commands.add_parser("probe")
     probe.add_argument("--socket", required=True)
@@ -1489,7 +1541,12 @@ def main() -> int:
             startup_gate_fd=args.startup_gate_fd,
         ).run()
     if args.command == "attach":
-        return run_attach(args.socket)
+        minimum = MAX_FRAME_BYTES + len(ATTACH_OUTPUT_TRUNCATED)
+        if args.max_output_bytes < minimum or args.max_output_bytes > MAX_ATTACH_OUTPUT_BYTES:
+            raise ValueError(
+                f"max attach output bytes must be between {minimum} and {MAX_ATTACH_OUTPUT_BYTES}"
+            )
+        return run_attach(args.socket, args.max_output_bytes)
     if args.command == "probe":
         return run_control(args.socket, b"P")
     if args.command == "stop":

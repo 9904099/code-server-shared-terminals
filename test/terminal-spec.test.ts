@@ -28,6 +28,7 @@ const runtime: TaskRuntimeConfig = {
   brokerScriptPath: "/extension/scripts/pty_broker.py",
   socketDirectory: "/tmp/shared-terminals-test",
   shellPath: "/bin/bash",
+  maxAttachOutputBytes: 100 * 1024 * 1024,
   environment: {},
 };
 
@@ -39,6 +40,7 @@ test("terminal spec opens the persistent server task as a native VS Code tab", (
   assert.deepEqual(spec.env, { [sharedTerminalTaskIdEnvironmentKey]: task.id });
   assert.deepEqual(spec.shellArgs, [
     "/extension/scripts/pty_broker.py", "attach", "--socket", "/tmp/shared-terminals-test/t-short.sock",
+    "--max-output-bytes", String(100 * 1024 * 1024),
   ]);
   assert.equal(spec.cwd, "/home/coder/workspace");
   assert.equal(spec.isTransient, true);
