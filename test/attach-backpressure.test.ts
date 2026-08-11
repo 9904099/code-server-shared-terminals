@@ -144,7 +144,7 @@ test("attach keeps draining broker output while its native PTY stdout is backpre
     return payload;
   });
 
-  const result = await exerciseBackpressuredAttach(64 * mebibyte, payloads);
+  const result = await exerciseBackpressuredAttach(100 * mebibyte, payloads);
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.stderr, "");
