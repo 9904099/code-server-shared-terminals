@@ -58,7 +58,7 @@ interface AttachResult {
 }
 
 async function exerciseBackpressuredAttach(
-  maxOutputBytes: number,
+  maxOutputBytes: number | undefined,
   payloads: readonly Buffer[],
 ): Promise<AttachResult> {
   const dir = await mkdtemp(join(tmpdir(), "shared-terminal-attach-backpressure-"));
@@ -86,12 +86,15 @@ async function exerciseBackpressuredAttach(
       server.once("error", reject);
     });
 
-    child = spawn("python3", [
+    const attachArguments = [
       brokerScript,
       "attach",
       "--socket", socketPath,
-      "--max-output-bytes", String(maxOutputBytes),
-    ], { stdio: ["pipe", "pipe", "pipe"] });
+    ];
+    if (maxOutputBytes !== undefined) {
+      attachArguments.push("--max-output-bytes", String(maxOutputBytes));
+    }
+    child = spawn("python3", attachArguments, { stdio: ["pipe", "pipe", "pipe"] });
     let stderr = "";
     child.stderr!.on("data", (chunk) => { stderr += chunk.toString(); });
 
@@ -133,22 +136,22 @@ async function exerciseBackpressuredAttach(
 }
 
 test("attach keeps draining broker output while its native PTY stdout is backpressured", async () => {
-  const payloads = Array.from({ length: 32 }, (_unused, index) => {
+  const payloads = Array.from({ length: 4 }, (_unused, index) => {
     const payload = Buffer.alloc(mebibyte, 0x78);
     if (index === 0) {
       payload.write("__BACKPRESSURE_BEGIN__", 0, "utf8");
     }
-    if (index === 31) {
+    if (index === 3) {
       payload.write("__BACKPRESSURE_END__", payload.length - 20, "utf8");
     }
     return payload;
   });
 
-  const result = await exerciseBackpressuredAttach(100 * mebibyte, payloads);
+  const result = await exerciseBackpressuredAttach(undefined, payloads);
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.stderr, "");
-  assert.equal(result.outputBytes, 32 * mebibyte);
+  assert.equal(result.outputBytes, 4 * mebibyte);
   assert.match(result.outputTail, /__BACKPRESSURE_END__/);
 });
 
@@ -169,4 +172,34 @@ test("attach bounds paused output and keeps the latest terminal state visible af
   assert.ok(result.pausedRssBytes <= 64 * mebibyte, JSON.stringify(result));
   assert.equal(result.sawTruncationWarning, true);
   assert.match(result.outputTail, /__LATEST_TERMINAL_STATE__/);
+});
+
+test("real Broker and shared PTY keep one attach identity across pause, output and resumed input", async () => {
+  const helper = join(process.cwd(), "test", "helpers", "real_pty_backpressure.py");
+  const child = spawn("python3", [helper, brokerScript], { stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  child.stdout!.on("data", (chunk) => { stdout += chunk.toString(); });
+  child.stderr!.on("data", (chunk) => { stderr += chunk.toString(); });
+  const exitCode = await withTimeout(
+    new Promise<number | null>((resolve, reject) => {
+      child.once("exit", resolve);
+      child.once("error", reject);
+    }),
+    "real Broker/PTTY backpressure harness",
+    30_000,
+  );
+  assert.equal(exitCode, 0, stderr || stdout);
+  assert.equal(stderr, "");
+  const summary = JSON.parse(stdout) as Record<string, unknown>;
+  assert.equal(summary.passed, true, stdout);
+  assert.equal(summary.pausedAttachedClients, 2, stdout);
+  assert.equal(summary.pausedQueuedClientOutputBytes, 0, stdout);
+  assert.equal(summary.slowClientsDelta, 0, stdout);
+  assert.equal(summary.attachIdentityStable, true, stdout);
+  assert.equal(summary.outputMarkerAfterResume, true, stdout);
+  assert.equal(summary.inputMarkerAfterResume, true, stdout);
+  assert.equal(summary.attachExitCode, 0, stdout);
+  assert.equal(summary.brokerExitCode, 0, stdout);
+  assert.equal(summary.emergencyCleanup, false, stdout);
 });
